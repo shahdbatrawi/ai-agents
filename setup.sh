@@ -15,64 +15,67 @@
 #   - Add your OpenRouter API key to .env
 #   - Activate the venv (source venv/bin/activate) and cd into the homework
 #     folder you're working on (e.g. "homework 0") to run its app.py
-
 set -e   # stop immediately if any command fails
-
 echo ""
 echo "========================================"
 echo "  AI Resume Agent — Setup"
 echo "========================================"
 echo ""
-
 # ----------------------------------------------------------------
 # STEP 1: Check Python version
 # ----------------------------------------------------------------
 echo "Step 1: Checking Python version..."
+PYTHON_BIN=""
 
-if ! command -v python3 &> /dev/null; then
+if command -v python3 &> /dev/null && python3 -c "import sys; sys.exit(0)" 2> /dev/null; then
+    PYTHON_BIN="python3"
+elif command -v python &> /dev/null && python -c "import sys; sys.exit(0)" 2> /dev/null; then
+    PYTHON_BIN="python"
+else
     echo ""
     echo "ERROR: Python 3 is not installed or not on your PATH."
     echo "Please install Python 3 from https://www.python.org/downloads/"
     exit 1
 fi
 
-PYTHON_VERSION=$(python3 --version)
+PYTHON_VERSION=$($PYTHON_BIN --version)
 echo "  Found: $PYTHON_VERSION"
-
 # ----------------------------------------------------------------
 # STEP 2: Create virtual environment
 # ----------------------------------------------------------------
 echo ""
 echo "Step 2: Creating virtual environment (venv)..."
-
 # A virtual environment is an isolated Python installation just for this project.
 # It keeps this project's packages separate from other Python projects on your machine.
 if [ -d "venv" ]; then
     echo "  venv/ already exists — skipping creation."
 else
-    python3 -m venv venv
+    $PYTHON_BIN -m venv venv
     echo "  Created venv/"
 fi
-
 # ----------------------------------------------------------------
 # STEP 3: Install dependencies
 # ----------------------------------------------------------------
 echo ""
 echo "Step 3: Installing packages from requirements.txt..."
-
 # Activate the venv so pip installs into it (not into your system Python)
-source venv/bin/activate
-pip install --quiet --upgrade pip
-pip install --quiet -r requirements.txt
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+elif [ -f "venv/Scripts/activate" ]; then
+    source venv/Scripts/activate
+else
+    echo "ERROR: Could not find the virtual environment activation script."
+    exit 1
+fi
 
+python -m pip install --quiet --upgrade pip
+python -m pip install --quiet -r requirements.txt
 echo "  All packages installed."
-
 # ----------------------------------------------------------------
 # STEP 4: Create .env file
 # ----------------------------------------------------------------
 echo ""
 echo "Step 4: Setting up .env file..."
-
 if [ -f ".env" ]; then
     echo "  .env already exists — skipping."
 else
@@ -83,10 +86,14 @@ else
     echo "  Open .env and replace 'paste-your-key-here' with your OpenRouter API key."
     echo ""
 fi
-
 # ----------------------------------------------------------------
 # DONE
 # ----------------------------------------------------------------
+ACTIVATE_CMD="source venv/bin/activate"
+if [ -f "venv/Scripts/activate" ]; then
+    ACTIVATE_CMD="source venv/Scripts/activate"
+fi
+
 echo "========================================"
 echo "  Setup complete!"
 echo "========================================"
@@ -94,7 +101,7 @@ echo ""
 echo "Next steps:"
 echo "  1. If you haven't already, add your OpenRouter API key to .env"
 echo "  2. Activate the virtual environment:"
-echo "       source venv/bin/activate"
+echo "       $ACTIVATE_CMD"
 echo "  3. Start the app:"
 echo "       python app.py"
 echo "  4. Open your browser to: http://localhost:8080"

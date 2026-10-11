@@ -1,5 +1,5 @@
 "position_id","inst_id","title","responsibilities","start_date","end_date"
-"1","1","Instructor","Teach classes; mostly NLP and Web design.","2019-01-01",NULL
-"2","1","Researcher","Perform research at interface of AI and healthcare.","2019-01-01",NULL
-"3","2","National Scholar","Helped the government plan the future of science","2021-01-01","2021-12-31"
-"4","3","Associate Director","Used data science to assess corporation and nations","2019-01-01","2020-01-01"
+"1","1","Student","Learning Software Development","2022-09-01","2026-07-25"
+"2","2","Student","Learning basics of computer science","2025-06","2025-09"
+"3","2","Student","AI agents","2026-10",NULL
+"4","3","Student","Machine Learnig","2025","2025"

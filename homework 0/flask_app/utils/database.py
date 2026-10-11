@@ -136,7 +136,7 @@ class database:
         if not os.path.exists(csv_file):
             return
 
-        with open(csv_file) as f:
+        with open(csv_file, encoding="utf-8-sig", newline="") as f:
             reader = csv.DictReader(f)
             rows = list(reader)
 
