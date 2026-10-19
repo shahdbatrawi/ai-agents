@@ -13,10 +13,7 @@
   <!-- Profile section -->
   <div class="profile-section">
 
-    <!--
-      Profile photo — replace headshot.png with your own image.
-      Put your image file in flask_app/static/images/ and update the filename below.
-    -->
+    <!-- Profile photo -->
     <img
       src="{{ url_for('static', filename='images/headshot.png') }}"
       alt="Profile photo"
@@ -43,29 +40,23 @@
   <div class="info-cards">
 
     <div class="card">
-      <h3>What This App Is</h3>
+      <h3>About Me</h3>
       <p>
-        This is your AI Agent portfolio — a web application that uses a language model
-        to answer questions about your resume. By the end of the semester, you'll extend
-        it with more sophisticated agents.
+        Information Technology student focused on full-stack software development, object-oriented design, and intelligent AI agent workflows.
       </p>
     </div>
 
     <div class="card">
-      <h3>How to Customize</h3>
+      <h3>Key Projects</h3>
       <p>
-        Edit the CSV files in <code>flask_app/database/initial_data/</code> to add your
-        own resume data, then restart the app. Edit this file (<code>home.html</code>)
-        to update your bio and photo.
+        Built Orbit X for the NASA Hackathon, modeled comprehensive database ERDs, and developed 3D procedural generation scripts with Python.
       </p>
     </div>
 
     <div class="card">
-      <h3>Try the AI Chat</h3>
+      <h3>AI Resume Assistant</h3>
       <p>
-        Visit the <a href="/resume">Resume page</a> and ask the AI assistant a question
-        about the resume. The chat panel on the right reads your resume data directly
-        from the database before answering.
+        Head over to the <a href="/resume">Resume page</a> to interact with the AI assistant. It queries real-time database records to answer questions about my background.
       </p>
     </div>
 
