@@ -1,0 +1,5 @@
+"experience_id","position_id","name","description","hyperlink","start_date","end_date"
+"1","1","NASA Space Apps Challenge - Orbit X","Designed planetary visual branding and concepts for the NASA hackathon.","https://github.com/Jamal-Abo-oun",NULL,NULL
+"2","1","Shared Space Booking System ERD","Designed relational database schema, entities, and cardinalities for a room booking platform.","https://github.com/Jamal-Abo-oun",NULL,NULL
+"3","1","3D Procedural Modeling with Blender API","Created automated 3D mesh modeling scripts using Python and the Blender bpy module.","https://github.com/Jamal-Abo-oun",NULL,NULL
+"4","2","AI Agents & Prompt Engineering","Implemented AI agent workflows, Few-Shot prompting, and prompt evaluation systems.","https://github.com/Jamal-Abo-oun",NULL,NULL
