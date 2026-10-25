@@ -32,8 +32,7 @@ the examples remains to be measured with an actual model.
 ## 3. Task decomposition and ordered coordination
 
 The Orchestrator breaks "Does he know Rust? If not, add it to AI Agents & Prompt
-Engineering" into a read followed by a conditional write. Earlier results are
-passed into later requests; the write checks again before inserting. A final
+Engineering" into a read followed by a conditional write. The write checks the database again before inserting. A final
 model call synthesizes the expert results.
 
 Comparison: send the conditional request directly to the Write Expert, then
@@ -42,7 +41,7 @@ present. Inspect the plan and execution order. A two-expert plan takes four
 model calls (plan, read, write, synthesis), increasing latency and cost.
 
 Local automated evidence verifies actual read/write handlers run in order,
-earlier results reach the next step, and duplicates are prevented. This tests
+duplicates are prevented. This tests
 coordination with model fixtures, not live planning quality.
 
 ## Live experiment results

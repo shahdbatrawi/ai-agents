@@ -165,17 +165,12 @@
   // When the server emits 'receive_message', display the AI's reply.
   // This is the listener side — sendMessage() below is the emitter side.
   // ----------------------------------------------------------------
-  async function refreshResumeContent() {
-    try {
-      const response = await fetch('/resume');
-      if (!response.ok) throw new Error('Resume refresh failed');
-      const html = await response.text();
-      const newContent = new DOMParser().parseFromString(html, 'text/html').querySelector('.resume-content');
-      const currentContent = document.querySelector('.resume-content');
-      if (newContent && currentContent) currentContent.innerHTML = newContent.innerHTML;
-    } catch (error) {
-      console.error('Could not refresh resume:', error);
-    }
+  async function refreshResumeContent(){
+    // Re-fetch /resume and swap in just the resume content, so DB writes
+    // made by the AI show up immediately without wiping the chat log.
+    const html = await (await fetch('/resume')).text();
+    const newContent = new DOMParser().parseFromString(html, 'text/html').querySelector('.resume-content');
+    if (newContent) document.querySelector('.resume-content').innerHTML = newContent.innerHTML;
   }
 
   socket.on('receive_message', function(data) {

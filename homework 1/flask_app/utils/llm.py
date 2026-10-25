@@ -14,8 +14,8 @@ KEY CONCEPTS:
     Think of it as the AI's job description.
 """
 
-import ast
 import os
+import re
 from jinja2 import Template
 import requests
 
@@ -104,7 +104,7 @@ def send_message(user_message, system_prompt="You are a helpful assistant."):
     return result['choices'][0]['message']['content']
 
 
-MASTER_TEMPLATE = Template("""\
+MASTER_TEMPLATE= Template("""\
 You are a {{ role }}, an expert in {{ domain }}.
 
 {{ specific_instructions }}
@@ -121,43 +121,68 @@ Request: {{ request }}
 
 
 def fill_template(role, domain, specific_instructions, request,
-                  background_context="", few_shot_examples=""):
-    """Render the shared prompt with optional context and examples."""
+                   background_context="", few_shot_examples=""):
+    """
+    Render MASTER_TEMPLATE into one expert's full system prompt.
+
+    background_context and few_shot_examples are optional: the {% if %}
+    blocks above drop the whole section — header included — when the
+    argument is empty, instead of leaving a dangling "Context:" with
+    nothing underneath it.
+    """
     return MASTER_TEMPLATE.render(
-        role=role, domain=domain, specific_instructions=specific_instructions,
-        request=request, background_context=background_context,
+        role=role,
+        domain=domain,
+        specific_instructions=specific_instructions,
+        background_context=background_context,
         few_shot_examples=few_shot_examples,
+        request=request,
     ).strip()
 
 
 def handle_ai_chat_request(db, role, message):
+    """
+    Route a chat message to the named expert. role=None keeps Homework 0's
+    original single-prompt behavior as a fallback, so nothing about the
+    basic chat flow breaks while you're building this out.
+    """
     if role is None:
         return send_message(message)
+
     config = db.getLLMRoles()[role]
     background_context = config['background_context'] or ""
     if role == "Content Expert":
+        # No page-scraping in this stack -- "current page content" is the
+        # resume data itself, fetched fresh on every request.
         background_context += "\n" + db.getResumeText()
+
     system_prompt = fill_template(
-        role=config['role'], domain=config['domain'],
+        role=config['role'],
+        domain=config['domain'],
         specific_instructions=config['specific_instructions'],
         background_context=background_context,
-        few_shot_examples=config['few_shot_examples'] or "", request=message,
+        few_shot_examples=config['few_shot_examples'] or "",
+        request=message,
     )
     output = send_message(message, system_prompt).strip()
-    print(f"[{role}] generated:\n{output}\n".encode("ascii", errors="backslashreplace").decode("ascii"))
-    if output.startswith("⚠️"):
-        return output
+    print(f"[{role}] generated:\n{output}\n")   # the rubric checks this output
+
     if role == "Database Read Expert":
         return execute_read_query(db, output)
     if role == "Database Write Expert":
         return execute_write_action(db, output)
     if role == "Orchestrator":
         return run_orchestrator_plan(db, message, output)
-    return output
+    return output   # Content Expert -- output is already the final answer
 
 
 def execute_read_query(db, sql):
-    """Run only a single SELECT; sqlite rejects multiple statements."""
+    """
+    Run the Database Read Expert's generated SQL. We refuse anything that
+    isn't a SELECT -- this expert is read-only by design, so there's never
+    a legitimate reason to run anything else, even if a user's message
+    somehow tricks the model into generating something else.
+    """
     if not sql.strip().upper().startswith("SELECT"):
         return "Sorry, I couldn't safely answer that question."
     try:
@@ -168,9 +193,21 @@ def execute_read_query(db, sql):
 
 
 def execute_write_action(db, generated_code):
-    """Execute Python as required by this local classroom exercise.
+    """
+    Run the Database Write Expert's generated Python. This genuinely
+    executes model-generated code with exec() -- see "Questions to Think
+    About" below for why that's worth pausing on. `db` is the only thing
+    exposed to it.
 
-    This is not a production sandbox; use trusted input only.
+    `outcome` is how the generated code reports back what happened -- it's
+    already the full, exact message to show the user (see Step 2), not a
+    bare status, because only the generated code knows which table/element
+    it actually touched.
+
+    NULL=None is a compatibility shim: the model sometimes writes SQL's
+    NULL instead of Python's None for a missing value. Python has no NULL,
+    so without this, that one habit would crash otherwise-correct code
+    with a NameError.
     """
     local_vars = {}
     try:
@@ -178,61 +215,38 @@ def execute_write_action(db, generated_code):
     except Exception as error:
         print(f"Write Expert code failed: {error}")
         return "Operation was unsuccessful."
-    outcome = local_vars.get("outcome", "Operation was unsuccessful.")
-    return outcome if isinstance(outcome, str) else "Operation was unsuccessful."
-
-
-def _parse_plan(plan_text):
-    """Validate the whole literal plan before executing any expert calls."""
-    calls = ast.literal_eval(plan_text)
-    if not isinstance(calls, list) or not calls or len(calls) > 10:
-        raise ValueError("Expected one to ten expert calls")
-    steps = []
-    for call_string in calls:
-        if not isinstance(call_string, str):
-            raise ValueError("Every plan item must be a call string")
-        call = ast.parse(call_string, mode='eval').body
-        if (not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name)
-                or call.func.id != 'handle_ai_chat_request' or call.args
-                or len(call.keywords) != 2):
-            raise ValueError("Invalid expert call")
-        arguments = {keyword.arg: ast.literal_eval(keyword.value) for keyword in call.keywords}
-        if set(arguments) != {'role', 'message'}:
-            raise ValueError("Expected role and message")
-        role, message = arguments['role'], arguments['message']
-        if role not in ('Database Read Expert', 'Database Write Expert', 'Content Expert'):
-            raise ValueError("Invalid expert role")
-        if not isinstance(message, str) or not message.strip():
-            raise ValueError("Expected a nonempty message")
-        steps.append((call_string, role, message))
-    return steps
+    return local_vars.get("outcome", "Operation was unsuccessful.")
 
 
 def run_orchestrator_plan(db, original_request, plan_text):
+    """
+    Parse the Orchestrator's plan (a Python list of call strings), run each
+    expert call in order, then make one final call to turn the raw results
+    into a single clean reply for the chat UI.
+    """
     try:
-        steps = _parse_plan(plan_text)
-    except (ValueError, SyntaxError, TypeError, RecursionError) as error:
-        print(f"Orchestrator returned an unparseable plan: {plan_text} ({error})")
+        call_strings = eval(plan_text)   # the Orchestrator's own list literal
+    except Exception:
+        print(f"Orchestrator returned an unparseable plan: {plan_text}")
         return "Sorry, I couldn't plan a response to that."
+
     results = []
-    for call_string, role, message in steps:
+    for call_string in call_strings:
         print(f"[Orchestrator] executing: {call_string}")
-        expert_message = message
-        if results:
-            prior = '\n'.join(f'{r}: {response}' for r, _, response in results)
-            expert_message += '\nPrevious expert results:\n' + prior
-        response = handle_ai_chat_request(db, role, expert_message)
+        match = re.search(r'role="([^"]*)",\s*message="([^"]*)"', call_string)
+        role, message = match.group(1), match.group(2)
+        response = handle_ai_chat_request(db, role, message)
         results.append((role, message, response))
-        if response.startswith(('⚠️', 'Sorry,', 'Operation was unsuccessful.')):
-            return response
-    steps_summary = '\n'.join(f'{role}: {response}' for role, _, response in results)
+
+    steps_summary = "\n".join(f"{r}: {resp}" for r, m, resp in results)
     synthesis_prompt = (
         f'The user asked: "{original_request}"\n\n'
-        f'Here is what each expert found or did:\n{steps_summary}\n\n'
+        f"Here is what each expert found or did:\n{steps_summary}\n\n"
         "Write ONE short, clear reply. A Database Write Expert step's result "
-        "is already the exact message to show the user. If one is present, "
-        "reuse it verbatim. Otherwise summarize the other results in plain "
-        "language. Never mention SQL, Python, code, or these internal steps. "
-        "Do not invent dates or facts absent from the results."
+        "is already the exact message to show the user (e.g. 'New Python "
+        "added to the skills table.') -- if one is present, reuse it "
+        "verbatim rather than rephrasing it. Otherwise, summarize the "
+        "other results in plain language. Never mention SQL, Python, code, "
+        "or these internal steps."
     )
     return send_message(original_request, synthesis_prompt)

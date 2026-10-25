@@ -69,19 +69,25 @@ class database:
             Using params=() tells SQLite to treat the value as data, not code.
             This is called "parameterized queries" and prevents SQL injection.
         """
+        # Connect to the database file (creates it if it doesn't exist)
         connection = sqlite3.connect(self.db_path)
-        try:
-            connection.execute("PRAGMA foreign_keys = ON")
-            connection.row_factory = sqlite3.Row
-            cursor = connection.execute(sql, params)
-            results = [dict(row) for row in cursor.fetchall()] if cursor.description else []
-            connection.commit()
-            return results
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        # row_factory lets us access columns by name: row['title']
+        # instead of by index: row[0]
+        connection.row_factory = sqlite3.Row
+
+        cursor = connection.cursor()
+        cursor.execute(sql, params)
+
+        # Only fetch rows for queries that return data
+        results = []
+        if sql.strip().upper().startswith(('SELECT', 'PRAGMA')):
+            results = [dict(row) for row in cursor.fetchall()]
+
+        connection.commit()
+        connection.close()
+        return results
 
     # ------------------------------------------------------------------
     # TABLE SETUP
@@ -113,7 +119,7 @@ class database:
     def _create_table(self, data_folder, table):
         """Read the .sql file for a table and execute it."""
         sql_file = os.path.join(data_folder, 'create_tables', f'{table}.sql')
-        with open(sql_file, encoding="utf-8") as f:
+        with open(sql_file) as f:
             self.query(f.read())
 
     def _seed_table(self, data_folder, table):
@@ -131,7 +137,7 @@ class database:
         if not os.path.exists(csv_file):
             return
 
-        with open(csv_file, encoding="utf-8", newline="") as f:
+        with open(csv_file) as f:
             reader = csv.DictReader(f)
             rows = list(reader)
 
@@ -150,7 +156,6 @@ class database:
         ]
 
         connection = sqlite3.connect(self.db_path)
-        connection.execute("PRAGMA foreign_keys = ON")
         connection.row_factory = sqlite3.Row
         cursor = connection.cursor()
         cursor.executemany(sql, values)
@@ -273,26 +278,30 @@ class database:
 
         return '\n'.join(lines)
 
+
     def getLLMRoles(self):
-        """Return prompt configurations keyed by expert name."""
-        return {row['role']: row for row in self.query("SELECT * FROM llm_roles")}
+        """
+        Return every row of llm_roles as a dict keyed by role name, e.g.
+            {"Database Read Expert": {"role": ..., "domain": ..., ...}, ...}
+        This is what each expert's config gets looked up from in llm.py.
+        """
+        rows = self.query("SELECT * FROM llm_roles")
+        return {row['role']: row for row in rows}
 
     def insertRows(self, table, columns, values):
-        """Insert one row; allow scalar SELECT expressions for foreign keys."""
-        allowed = {
-            row['name'] for row in self.query("SELECT name FROM sqlite_master WHERE type = 'table'")
-        }
-        if table not in allowed or table not in TABLE_ORDER or table == 'llm_roles':
-            raise ValueError("Unknown resume table")
-        valid_columns = {row['name'] for row in self.query(f'PRAGMA table_info("{table}")')}
-        if not columns or len(columns) != len(values) or not set(columns) <= valid_columns:
-            raise ValueError("Invalid columns or values")
+        """
+        Insert one row into `table`. Any value that starts with "(SELECT" is
+        inlined directly into the SQL instead of bound as a parameter, so the
+        Database Write Expert's generated code can resolve a foreign key by
+        name instead of needing to know the numeric ID, e.g.
+            "(SELECT experience_id FROM experiences WHERE name = 'MSU Research')"
+        """
         value_sql, bound_params = [], []
         for value in values:
-            if isinstance(value, str) and value.strip().upper().startswith('(SELECT'):
+            if isinstance(value, str) and value.strip().startswith("(SELECT"):
                 value_sql.append(value)
             else:
-                value_sql.append('?')
+                value_sql.append("?")
                 bound_params.append(value)
-        column_sql = ', '.join('"' + column + '"' for column in columns)
-        self.query(f'INSERT INTO "{table}" ({column_sql}) VALUES ({", ".join(value_sql)})', tuple(bound_params))
+        sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(value_sql)})"
+        self.query(sql, tuple(bound_params))

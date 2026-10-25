@@ -13,7 +13,7 @@ WHY A create_app() FUNCTION?
   is a common Flask pattern. It makes the app easier to test and configure.
   This pattern is called an "application factory".
 
-# QUESTION: What does purge=True do in db.createTables(purge=False)
+# QUESTION: What does purge=True do in db.createTables(purge=True)
     app.db = db?
 #           Try changing it to False, add a row to a CSV, and restart.
 #           What happens? Why?
@@ -52,12 +52,12 @@ def create_app():
     from flask_app.utils.database import database
     db = database()
     print("Setting up database...")
-    db.createTables(purge=False)
+    db.createTables(purge=True)
     app.db = db
     print("Database ready.")
 
     # Connect Socket.IO to the Flask app
-    socketio.init_app(app, async_mode="threading")
+    socketio.init_app(app)
 
     # Register routes and socket events inside the app context.
     # The app context makes app.config and other Flask globals available.

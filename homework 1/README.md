@@ -1,42 +1,26 @@
-# Homework 1 — Multi-expert resume agent
+# Homework 1 — AI Agents
 
-Jamal's Homework 0 resume now uses Database Read, Database Write, Content,
-and Orchestrator roles. All share `openai/gpt-4o-mini` through OpenRouter;
-their prompts are configured in the `llm_roles` table.
+Implementation follows the supplied Homework 1 steps, extending Jamal's Homework 0.
+All four roles use `openai/gpt-4o-mini` through OpenRouter.
 
 ## Run
 
-Install the unchanged requirements from the repository root, preferably in a
-virtual environment: `pip install -r requirements.txt`. Then:
+Install the repository requirements, enter your own OpenRouter key in a local
+`.env` file using `.env.example`, then from `homework 1` run `python app.py`.
+The assignment uses port 8080. Its default Socket.IO setup uses the installed
+async backend. The pinned eventlet dependency is incompatible with Python 3.13;
+use a compatible Python environment for the handout's unchanged startup code.
 
-```sh
-cd "homework 1"
-# Copy .env.example to .env and enter your OPENROUTER_API_KEY.
-python app.py
-```
+Startup uses `db.createTables(purge=True)` exactly as the handout specifies.
+A browser reload preserves added rows; restarting the server resets the database.
+The Orchestrator uses the supplied `eval` and regex parser, and generated writes
+use `exec`. These retain the classroom design and its documented limitations.
 
-Open http://localhost:8080/resume. Live chat needs an OpenRouter key with access
-and credits for the configured model. Keep the terminal visible to see plans,
-SELECT statements, generated Python, and ordered expert execution.
+## Local verification
 
-Database changes survive page reloads and server restarts (`purge=False`).
-To reset Homework 1, stop the app, delete only its
-`flask_app/database/resume.db`, and restart. Homework 0 is separate.
-
-## Tests and demonstration
-
-From `homework 1`, run `python -m unittest discover -s tests -v`.
-Tests use temporary SQLite databases and mocked model outputs; they execute
-actual SQL, generated Python fixtures, and Socket.IO handlers without API costs.
-They do not measure live model quality. Follow `documentation/demo_checklist.md`
-to record the required live video and complete the live prompt comparisons in
-`prompt_engineering.md`.
-
-The plan parser uses `ast.literal_eval` and validated AST calls instead of
-`eval`, handling quoted messages and rejecting invalid plans before execution.
-Earlier results are passed to later experts to support conditional requests.
-The Write Expert still uses `exec` as required by the classroom exercise;
-this local app is not a production code-execution sandbox.
-
-Socket.IO uses threading mode to support Python 3.13 with the existing pinned
-dependencies; no requirements were added or changed.
+From `homework 1`: `python -X utf8 -m unittest discover -s tests -v`.
+The test harness selects threading only during tests to avoid the local eventlet
+compatibility problem; the delivered application factory follows the handout.
+Tests use temporary SQLite and mocked model outputs, with no live API requests.
+Live API behavior and prompt experiments remain unverified due to the key limit.
+See the demo checklist and fill in actual results in `prompt_engineering.md`.
