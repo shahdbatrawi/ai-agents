@@ -1,7 +1,7 @@
 # Homework 1 — AI Agents
 
 Implementation follows the supplied Homework 1 steps, extending Jamal's Homework 0.
-All four roles use `google/gemma-4-31b-it:free` through OpenRouter.
+All four roles use `qwen/qwen3-coder:free` through OpenRouter.
 
 ## Run
 
