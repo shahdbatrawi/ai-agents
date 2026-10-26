@@ -1,7 +1,7 @@
 # Homework 1 — AI Agents
 
 Implementation follows the supplied Homework 1 steps, extending Jamal's Homework 0.
-All four roles use `openai/gpt-4o-mini` through OpenRouter.
+All four roles use `nvidia/nemotron-3-super-120b-a12b:free` through OpenRouter.
 
 ## Run
 

@@ -60,7 +60,7 @@ class AgentsTest(unittest.TestCase):
         for absent in ('{{', 'Context:', 'Examples:'):
             self.assertNotIn(absent, prompt)
         self.assertIn('Hello?', prompt)
-        self.assertEqual(llm.DEFAULT_MODEL, 'openai/gpt-4o-mini')
+        self.assertEqual(llm.DEFAULT_MODEL, 'nvidia/nemotron-3-super-120b-a12b:free')
 
     def test_read_real_database_and_reject_write(self):
         with patch.object(llm, 'send_message', return_value="SELECT name FROM institutions"):
