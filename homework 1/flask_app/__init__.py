@@ -13,8 +13,7 @@ WHY A create_app() FUNCTION?
   is a common Flask pattern. It makes the app easier to test and configure.
   This pattern is called an "application factory".
 
-# QUESTION: What does purge=True do in db.createTables(purge=True)
-    app.db = db?
+# QUESTION: What does purge=True do in db.createTables(purge=True)?
 #           Try changing it to False, add a row to a CSV, and restart.
 #           What happens? Why?
 """
