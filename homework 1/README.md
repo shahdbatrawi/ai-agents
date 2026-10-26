@@ -1,7 +1,7 @@
 # Homework 1 — AI Agents
 
 Implementation follows the supplied Homework 1 steps, extending Jamal's Homework 0.
-All four roles use `nvidia/nemotron-3.5-lightning:free` through OpenRouter.
+All four roles use `openrouter/free` through OpenRouter.
 
 ## Run
 
