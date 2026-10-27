@@ -1,0 +1,4 @@
+"experience_id","position_id","name","description","hyperlink","start_date","end_date"
+"1","1","Full-Stack & Backend Systems","Developed web applications and APIs using Laravel and Python with clean architecture and design patterns.","https://github.com/shahdbatrawi","2022-09-01","2024-06-30"
+"2","1","AI Frameworks & Agentic AI Research","Explored and applied AI agent frameworks and prompt engineering techniques (CoT, ReAct, Tree-of-Thoughts, Few-Shot).","https://github.com/shahdbatrawi/ai-agents","2024-01-01","2024-06-30"
+
