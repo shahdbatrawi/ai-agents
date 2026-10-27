@@ -1,0 +1,4 @@
+"inst_id","type","name","department","address","city","state","zip"
+"1","Academia","Islamic University of Gaza","IT",NULL,"Gaza","Gaza Strip",NULL
+"2","Academia","MITx Online",NULL,NULL,NULL,NULL,NULL
+"3","Institute","ِAristo","Machine Learning",NULL,NULL,NULL,NULL
