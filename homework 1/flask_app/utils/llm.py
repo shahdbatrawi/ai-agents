@@ -28,7 +28,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # See all available models at: https://openrouter.ai/models
 # QUESTION: What would change if you switched to a different model?
 #           Try 'google/gemma-2-9b-it:free' or 'mistralai/mistral-7b-instruct:free'.
-DEFAULT_MODEL = "poolside/laguna-s-2.1:free"
+DEFAULT_MODEL = "openai/gpt-4o-mini"
 
 
 def send_message(user_message, system_prompt="You are a helpful assistant."):
