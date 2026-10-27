@@ -602,7 +602,7 @@ Then record a short demo video (see `documentation/rubric.md` for exactly what t
 ## Local branch notes — Jamal_HM1
 
 The sections above are the original course instructions. This branch uses
-`qwen/qwen3-coder:free` at the student's request instead of the handout model.
+`poolside/laguna-s-2.1:free` at the student's request instead of the handout model.
 The application's four roles all use that same configured model.
 
 Keep `.env`, `.env.example`, `requirements.txt`, and `venv/` at the repository
