@@ -21,14 +21,64 @@ ALLOWED_EXPERTS = {
     "Semantic Search Expert",
 }
 
+PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "reason": {"type": "string"},
+        "steps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "enum": sorted(ALLOWED_EXPERTS),
+                    },
+                    "message": {"type": "string"},
+                },
+                "required": ["role", "message"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["reason", "steps"],
+    "additionalProperties": False,
+}
+
+WRITE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "operation": {
+            "type": "string",
+            "enum": [
+                "add_skill",
+                "delete_skill",
+                "delete_all_skills",
+                "unsupported",
+            ],
+        },
+        "skill_name": {"type": ["string", "null"]},
+        "experience_name": {"type": ["string", "null"]},
+        "skill_level": {"type": ["integer", "null"]},
+    },
+    "required": [
+        "operation",
+        "skill_name",
+        "experience_name",
+        "skill_level",
+    ],
+    "additionalProperties": False,
+}
+
 
 def send_message(
     user_message,
     system_prompt="You are a helpful assistant.",
     *,
     json_mode=False,
+    response_schema=None,
 ):
-    """Call OpenRouter, optionally requesting JSON output."""
+    """Call OpenRouter with optional structured JSON output."""
     api_key = os.getenv("OPENROUTER_API_KEY")
     model = os.getenv("OPENROUTER_CHAT_MODEL")
 
@@ -47,7 +97,18 @@ def send_message(
         "temperature": 0,
     }
 
-    if json_mode:
+    if response_schema is not None:
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "expert_response",
+                "strict": True,
+                "schema": response_schema,
+            },
+        }
+        payload["provider"] = {"require_parameters": True}
+
+    elif json_mode:
         payload["response_format"] = {"type": "json_object"}
         payload["provider"] = {"require_parameters": True}
 
@@ -106,7 +167,7 @@ def strip_code_fences(text):
 
 
 def parse_json(text):
-    """Parse model output as data without executing it."""
+    """Read model output as data, never executable code."""
     cleaned = strip_code_fences(text)
 
     try:
@@ -128,8 +189,57 @@ def parse_json(text):
         ) from None
 
 
+def normalize_write_action(action):
+    """Check the response shape before passing it to SafeWrites."""
+    expected_fields = {
+        "operation",
+        "skill_name",
+        "experience_name",
+        "skill_level",
+    }
+
+    if not isinstance(action, dict) or set(action) != expected_fields:
+        raise ValueError("Invalid write action structure.")
+
+    operation = action["operation"]
+
+    if not isinstance(operation, str):
+        raise ValueError("Invalid operation name.")
+
+    if operation == "unsupported":
+        raise ValueError("This database change is not supported.")
+
+    if operation == "delete_all_skills":
+        if any(
+            action[field] is not None
+            for field in ("skill_name", "experience_name", "skill_level")
+        ):
+            raise ValueError(
+                "Delete-all must not contain item values."
+            )
+
+        return {"operation": operation}
+
+    if operation == "delete_skill":
+        if action["skill_level"] is not None:
+            raise ValueError(
+                "A deletion must not specify a skill level."
+            )
+
+        return {
+            "operation": operation,
+            "skill_name": action["skill_name"],
+            "experience_name": action["experience_name"],
+        }
+
+    if operation == "add_skill":
+        return action
+
+    raise ValueError("Unknown write operation.")
+
+
 def expert_output(db, role, message):
-    """Build an expert prompt from current role configuration."""
+    """Build prompts and request the appropriate response schema."""
     roles = db.getLLMRoles()
 
     if role not in roles:
@@ -148,15 +258,45 @@ def expert_output(db, role, message):
     if role == "Content Expert":
         sections.append("Resume data:\n" + db.getResumeText())
 
-    return send_message(
+    schema = None
+
+    if role == "Orchestrator":
+        schema = PLAN_SCHEMA
+
+    elif role == "Database Write Expert":
+        schema = WRITE_SCHEMA
+
+        sections.append(
+            "OUTPUT FORMAT UPDATE: Always return all four JSON fields: "
+            "operation, skill_name, experience_name, skill_level. "
+            "For add_skill, provide the skill name, an experience name "
+            "or null, and an integer skill level from 1 to 10 "
+            "(default 5 if unspecified). "
+            "For delete_skill, provide the skill name and an experience "
+            "name or null; skill_level MUST be null. "
+            "For delete_all_skills, all three value fields MUST be null. "
+            "For an unsupported request, operation MUST be unsupported "
+            "and all three value fields MUST be null. "
+            "Do not substitute a supported action for an unsupported one. "
+            "This output format replaces the earlier examples' format. "
+            "You propose an operation; you never execute it."
+        )
+
+    output = send_message(
         message,
         "\n\n".join(sections),
-        json_mode=role in {"Orchestrator", "Database Write Expert"},
+        response_schema=schema,
     )
+
+    if role == "Database Write Expert":
+        action = normalize_write_action(parse_json(output))
+        return json.dumps(action)
+
+    return output
 
 
 def execute_read_query(db, sql):
-    """Execute generated SELECT SQL through a read-only connection."""
+    """Run generated SELECT SQL through a read-only connection."""
     sql = strip_code_fences(sql)
 
     if not re.match(r"^SELECT\b", sql, flags=re.IGNORECASE):
@@ -188,7 +328,7 @@ def execute_read_query(db, sql):
 
 
 def validate_plan(plan):
-    """Validate every plan step before running any expert."""
+    """Validate the entire plan before executing any step."""
     if not isinstance(plan, dict):
         raise ValueError("The plan must be a JSON object.")
 
@@ -206,7 +346,7 @@ def validate_plan(plan):
         raise ValueError("Invalid routing reason.")
 
     if not isinstance(steps, list) or not 1 <= len(steps) <= 4:
-        raise ValueError("The plan must contain 1–4 steps.")
+        raise ValueError("The plan must contain 1-4 steps.")
 
     for step in steps:
         if not isinstance(step, dict):
@@ -244,8 +384,28 @@ def validate_plan(plan):
 
 
 def choose_plan(db, message):
-    """Route common retrieval requests; use model planning for others."""
+    """Use routing rules, then model planning for other requests."""
     text = message.strip().rstrip("?.!").strip()
+
+    # Routing selects the expert, not whether a write is approved.
+    write_request = re.match(
+        r"^(?:please\s+)?"
+        r"(?:add|remove|delete|erase|clear|empty|clean(?:\s+up)?)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if write_request:
+        return validate_plan({
+            "reason": (
+                "An explicit change request goes to the Write Expert. "
+                "The write executor determines whether approval is required."
+            ),
+            "steps": [{
+                "role": "Database Write Expert",
+                "message": message,
+            }],
+        })
 
     exact_patterns = [
         (
@@ -281,11 +441,7 @@ def choose_plan(db, message):
     ]
 
     for pattern, lookup in institution_patterns:
-        match = re.fullmatch(
-            pattern,
-            text,
-            flags=re.IGNORECASE,
-        )
+        match = re.fullmatch(pattern, text, flags=re.IGNORECASE)
 
         if match:
             entity = match.group(1).strip()
@@ -339,7 +495,7 @@ def choose_plan(db, message):
 
 
 def summarize_results(message, results):
-    """Format retrieved data directly without another model call."""
+    """Format retrieved data without another model call."""
     if isinstance(results, dict):
         if results.get("outcome") == "not_found":
             return "No matching records found."
@@ -420,7 +576,7 @@ def handle_ai_chat_request(
     client_id=None,
     trace=None,
 ):
-    """Dispatch a validated plan through explicitly allowed experts."""
+    """Run a validated plan through explicitly allowed experts."""
     def log(event, **details):
         if trace is not None:
             trace(event, **details)
@@ -447,12 +603,7 @@ def handle_ai_chat_request(
 
         if expert == "Semantic Search Expert":
             specification = parse_json(request_text)
-
-            retrieved = run_semantic_request(
-                db,
-                specification,
-                log,
-            )
+            retrieved = run_semantic_request(db, specification, log)
 
             if retrieved["outcome"] == "not_found":
                 return "No matching records found."
@@ -493,16 +644,9 @@ def handle_ai_chat_request(
                 approval="none",
             )
 
-            results.append({
-                "expert": expert,
-                "rows": rows,
-            })
-
+            results.append({"expert": expert, "rows": rows})
         else:
-            results.append({
-                "expert": expert,
-                "answer": output,
-            })
+            results.append({"expert": expert, "answer": output})
 
     if len(results) == 1 and "answer" in results[0]:
         return results[0]["answer"]
