@@ -7,12 +7,17 @@ from flask_app.utils.database import EMBED_SOURCES
 
 DEFAULT_TOP_K = 5
 
+# Column holding the exact, human-readable name of a record in each table.
+NAME_COLUMNS = {"institutions": "name", "positions": "title",
+                "experiences": "name", "skills": "name"}
+
 
 def search_by_meaning(db, query, tables=None, top_k=DEFAULT_TOP_K, min_score=None):
     """
     Embed `query` and return the best matching records, ranked.
 
-    Each result: {"table": ..., "id": ..., "text": <embedded text>, "score": <cosine>}
+    Each result: {"table": ..., "id": ..., "name": <exact name stored in the DB>,
+                  "text": <embedded text>, "score": <cosine>}
     - tables:    only search these tables (default: all embedded tables)
     - min_score: results below this are dropped. Default comes from SEARCH_MIN_SCORE.
     Raises EmbeddingError if the query itself cannot be embedded (never invents matches).
@@ -47,4 +52,18 @@ def search_by_meaning(db, query, tables=None, top_k=DEFAULT_TOP_K, min_score=Non
                             "text": row["text"], "score": round(score, 4)})
 
     results.sort(key=lambda r: r["score"], reverse=True)
-    return results[:top_k]
+    results = results[:top_k]
+
+    # Add the exact stored name, so a later step can use it in SQL.
+    for r in results:
+        name = r["text"]
+        if r["table"] in EMBED_SOURCES and r["table"] in NAME_COLUMNS:
+            id_col = EMBED_SOURCES[r["table"]][0]
+            rows = db.query(
+                f"SELECT {NAME_COLUMNS[r['table']]} AS name FROM {r['table']} WHERE {id_col} = ?",
+                (r["id"],),
+            )
+            if rows:
+                name = rows[0]["name"]
+        r["name"] = name
+    return results

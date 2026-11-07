@@ -14,9 +14,14 @@ KEY CONCEPTS:
     Think of it as the AI's job description.
 """
 
+import json
 import os
 import requests
 import re
+
+from flask_app.utils.embeddings import EmbeddingError
+from flask_app.utils.database import EMBED_SOURCES
+from flask_app.utils.semantic_search import search_by_meaning
 
 
 
@@ -141,14 +146,32 @@ def send_message(user_message, system_prompt="You are a helpful assistant."):
 
 
 
-def handle_ai_chat_request(db, role, message):
+# Experts the Orchestrator is allowed to call. Anything else in a plan is rejected.
+ALLOWED_EXPERTS = {
+    "Semantic Search Expert",
+    "Database Read Expert",
+    "Database Write Expert",
+    "Content Expert",
+}
+MAX_PLAN_STEPS = 4
+
+
+def handle_ai_chat_request(db, role, message, context="", tables=None):
     """
     Route a chat message to the named expert. role=None keeps Homework 0's
-    original single-prompt behavior as a fallback, so nothing about the
-    basic chat flow breaks while you're building this out.
+    original single-prompt behavior as a fallback.
+
+    context: results of earlier plan steps (used by the Read/Write experts, so a
+             second step can use exactly what the first step found).
+    tables:  only used by the Semantic Search Expert (which tables to search).
     """
     if role is None:
         return send_message(message)
+
+    # The Semantic Search Expert makes no model call: it embeds the query and
+    # compares it with the stored embeddings (see semantic_search.py).
+    if role == "Semantic Search Expert":
+        return run_semantic_search(db, message, tables)
 
     config = db.getLLMRoles()[role]
     background_context = config['background_context'] or ""
@@ -156,6 +179,8 @@ def handle_ai_chat_request(db, role, message):
         # No page-scraping in this stack -- "current page content" is the
         # resume data itself, fetched fresh on every request.
         background_context += "\n" + db.getResumeText()
+    if context and role in ("Database Read Expert", "Database Write Expert"):
+        background_context += "\n" + context
 
     system_prompt = fill_template(
         role=config['role'],
@@ -175,6 +200,38 @@ def handle_ai_chat_request(db, role, message):
     if role == "Orchestrator":
         return run_orchestrator_plan(db, message, output)
     return output   # Content Expert -- output is already the final answer
+
+
+def run_semantic_search(db, query, tables=None):
+    """
+    Search by meaning and return a plain-text list of ranked matches. The text
+    starts with "NO MATCH" or "SEARCH FAILED" when there is nothing usable, so
+    later code (and the final reply) can say so honestly instead of guessing.
+    """
+    cutoff = os.getenv("SEARCH_MIN_SCORE", "0.0")
+    scope = ", ".join(tables) if tables else "all tables"
+    try:
+        results = search_by_meaning(db, query, tables=tables)
+    except EmbeddingError as error:
+        print(f"[Semantic Search Expert] embedding failed: {error}")
+        return f"SEARCH FAILED: the search is unavailable right now ({error})."
+    except ValueError as error:
+        print(f"[Semantic Search Expert] bad request: {error}")
+        return f"SEARCH FAILED: {error}"
+
+    print(f"[Semantic Search Expert] query={query!r} tables={scope} cutoff={cutoff}")
+    for r in results:
+        print(f"    {r['score']:.3f}  {r['table']}#{r['id']}  {r['text'][:70]}")
+
+    if not results:
+        print("    (nothing above the relevance cutoff)")
+        return (f"NO MATCH: nothing relevant to '{query}' was found in {scope} "
+                f"(relevance cutoff {cutoff}).")
+    return "\n".join(
+        f"{r['table']} #{r['id']} name='{r['name']}' score={r['score']:.3f} text='{r['text']}'"
+        for r in results
+    )
+
 
 def execute_read_query(db, sql):
     """
@@ -218,73 +275,103 @@ def execute_write_action(db, generated_code):
     return local_vars.get("outcome", "Operation was unsuccessful.")
 
 
-def run_orchestrator_plan(db, original_request, plan_text):
-    """Run the experts in the Orchestrator's plan and summarize results."""
-    plan_text = re.sub(r"^```(?:python)?\s*|\s*```$", "", plan_text.strip())
+def parse_plan(plan_text):
+    """
+    Read the Orchestrator's plan as DATA (JSON) and check it. Raises ValueError if
+    anything is wrong. Nothing from the model is ever executed here.
+
+    Expected: a JSON list of steps, each like
+        {"expert": "<allowed expert>", "message": "...", "reason": "...",
+         "tables": ["skills"]}            <- tables only for the Semantic Search Expert
+    """
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", plan_text.strip())
     try:
-        call_strings = eval(plan_text)
+        plan = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"the plan is not valid JSON ({error.msg})")
+    if isinstance(plan, dict) and "steps" in plan:
+        plan = plan["steps"]
+    if not isinstance(plan, list) or not plan:
+        raise ValueError("the plan must be a non-empty list of steps")
+    if len(plan) > MAX_PLAN_STEPS:
+        raise ValueError(f"the plan has more than {MAX_PLAN_STEPS} steps")
 
-        if not isinstance(call_strings, list) or not all(
-            isinstance(call, str) for call in call_strings
-        ):
-            raise ValueError("Expected a list of call strings.")
+    steps = []
+    for number, step in enumerate(plan, 1):
+        if not isinstance(step, dict):
+            raise ValueError(f"step {number} is not an object")
+        expert, message = step.get("expert"), step.get("message")
+        if expert not in ALLOWED_EXPERTS:
+            raise ValueError(f"step {number} uses an unknown expert: {expert!r}")
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError(f"step {number} has no message")
+        tables = step.get("tables")
+        if tables is not None:
+            if (not isinstance(tables, list) or not tables
+                    or not all(t in EMBED_SOURCES for t in tables)):
+                raise ValueError(f"step {number} has invalid tables: {tables!r}")
+        steps.append({
+            "expert": expert,
+            "message": message.strip(),
+            "tables": tables,
+            "reason": str(step.get("reason", "")).strip()[:200],
+        })
+    return steps
 
-    except (ValueError, SyntaxError, TypeError) as error:
+
+def _earlier_results_context(results):
+    """Turn the results of earlier steps into context for the next step."""
+    if not results:
+        return ""
+    lines = "\n".join(f"[{expert}] {response}" for expert, _, response in results)
+    return ("Results of earlier steps. Use the exact names shown here (the "
+            "name='...' values) in your SQL; do not guess names:\n" + lines)
+
+
+def run_orchestrator_plan(db, original_request, plan_text):
+    """Run the experts in the Orchestrator's plan, in order, and summarize results."""
+    try:
+        steps = parse_plan(plan_text)
+    except ValueError as error:
         print(f"Orchestrator returned an invalid plan: {error}")
         print(f"Plan received: {plan_text!r}")
         return "Sorry, I couldn't plan a response to that."
 
     results = []
-    allowed_roles = {
-        "Database Read Expert",
-        "Database Write Expert",
-        "Content Expert",
-    }
-
-    for call_string in call_strings:
-        print(f"[Orchestrator] executing: {call_string}")
-
-        match = re.fullmatch(
-            r"handle_ai_chat_request\s*\(\s*role\s*=\s*(.*?)\s*,"
-            r"\s*message\s*=\s*(.*?)\s*\)?",
-            call_string.strip(),
+    for number, step in enumerate(steps, 1):
+        print(f"[trace] step {number}/{len(steps)}: {step['expert']} | "
+              f"reason: {step['reason'] or '-'}")
+        response = handle_ai_chat_request(
+            db, step["expert"], step["message"],
+            context=_earlier_results_context(results),
+            tables=step["tables"],
         )
+        results.append((step["expert"], step["message"], response))
 
-        if not match:
-            print(f"Invalid Orchestrator call: {call_string!r}")
-            return "Sorry, I couldn't process the response plan."
-
-        role = match.group(1).strip().strip("'\"")
-        message = match.group(2).strip()
-
-        # Accept calls with or without the final closing parenthesis.
-        if message.endswith(")"):
-            message = message[:-1].rstrip()
-
-        message = message.strip().strip("'\"")
-
-        if role not in allowed_roles or not message:
-            print(f"Invalid role or message: {role!r}, {message!r}")
-            return "Sorry, I couldn't process the response plan."
-
-        print(f"[Orchestrator] parsed role: {role}")
-        print(f"[Orchestrator] parsed message: {message}")
-
-        response = handle_ai_chat_request(db, role, message)
-        results.append((role, message, response))
+        # If the search found nothing usable, later steps depend on it: stop here.
+        if (step["expert"] == "Semantic Search Expert"
+                and str(response).startswith(("NO MATCH", "SEARCH FAILED"))
+                and number < len(steps)):
+            print("[trace] the search found nothing usable: skipping the remaining steps")
+            break
 
     steps_summary = "\n".join(
-        f"{role}: {response}"
-        for role, message, response in results
+        f"{expert}: {response}" for expert, message, response in results
     )
 
     synthesis_prompt = (
         f'The user asked: "{original_request}"\n\n'
         f"Expert results:\n{steps_summary}\n\n"
-        "Give one short, clear reply based only on the expert results. "
-        "If a Database Write Expert returned the exact success or "
-        "already-exists message, reuse it verbatim. Do not invent "
-        "resume information or claim a change succeeded if it failed."
+        "Give one short, clear reply based ONLY on the expert results. Rules: "
+        "If a Database Write Expert returned the exact success or already-exists "
+        "message, reuse it verbatim. "
+        "If a result starts with NO MATCH, say you could not find anything matching "
+        "the request, and do not guess. "
+        "If a result starts with SEARCH FAILED, say the search is unavailable right "
+        "now, and do not guess. "
+        "When records were found, name them exactly as shown. "
+        "Never mention scores, SQL, experts or internal steps. "
+        "Do not invent resume information or claim a change succeeded if it failed."
     )
 
     return send_message(original_request, synthesis_prompt)
