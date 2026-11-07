@@ -239,7 +239,62 @@ def normalize_write_action(action):
 
 
 def expert_output(db, role, message):
-    """Build prompts and request the appropriate response schema."""
+    """Use fixed SQL for exact listings/counts; models for other requests."""
+
+    if role == "Database Read Expert":
+        text = message.strip().rstrip("?.!").strip()
+
+        listings = {
+            "skills": (
+                "SELECT skill_id, name, skill_level "
+                "FROM skills ORDER BY name;"
+            ),
+            "positions": (
+                "SELECT position_id, inst_id, title, responsibilities, "
+                "start_date, end_date "
+                "FROM positions ORDER BY position_id;"
+            ),
+            "experiences": (
+                "SELECT experience_id, position_id, name, description "
+                "FROM experiences ORDER BY experience_id;"
+            ),
+            "institutions": (
+                "SELECT inst_id, name, department, city, state "
+                "FROM institutions ORDER BY inst_id;"
+            ),
+        }
+
+        listing = re.fullmatch(
+            r"(?:please\s+)?(?:list|show|display)\s+"
+            r"(?:all\s+)?my\s+"
+            r"(skills|positions|experiences|institutions)",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if listing:
+            return listings[listing.group(1).lower()]
+
+        if re.fullmatch(
+            r"what\s+(?:all\s+)?skills\s+do\s+i\s+have",
+            text,
+            flags=re.IGNORECASE,
+        ):
+            return listings["skills"]
+
+        count = re.fullmatch(
+            r"(?:please\s+)?how\s+many\s+"
+            r"(skills|positions|experiences|institutions)"
+            r"\s+do\s+i\s+have",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if count:
+            # Table name comes only from the fixed allowlist above.
+            table = count.group(1).lower()
+            return f"SELECT COUNT(*) AS total FROM {table};"
+
     roles = db.getLLMRoles()
 
     if role not in roles:
@@ -282,6 +337,14 @@ def expert_output(db, role, message):
             "You propose an operation; you never execute it."
         )
 
+        sections.append(
+            "Preserve explicitly specified skill and experience names "
+            "verbatim, including all words. If a name is quoted, copy "
+            "the text inside the quotes exactly, without the quotes. "
+            "Do not shorten names, translate them, or replace them "
+            "with synonyms."
+        )
+
     output = send_message(
         message,
         "\n\n".join(sections),
@@ -293,7 +356,6 @@ def expert_output(db, role, message):
         return json.dumps(action)
 
     return output
-
 
 def execute_read_query(db, sql):
     """Run generated SELECT SQL through a read-only connection."""
