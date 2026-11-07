@@ -1,0 +1,67 @@
+{% extends 'layout.html' %}
+{#
+  home.html - the landing page of your AI agent portfolio.
+
+  This page extends layout.html, which provides the nav bar and footer.
+  Everything inside the block content / endblock tags is YOUR content.
+#}
+
+{% block content %}
+
+<div class="home-container">
+
+  <!-- Profile section -->
+  <div class="profile-section">
+
+    <!-- Profile photo -->
+    <img
+      src="{{ url_for('static', filename='images/headshot.png') }}"
+      alt="Profile photo"
+      class="profile-photo"
+    >
+
+    <div class="profile-text">
+
+      <h1>Jamal Abdelnaser Abu Aoun</h1>
+
+      <p class="subtitle">IT Student & Full-Stack / AI Agent Developer</p>
+
+      <p>
+        I am an Information Technology student passionate about software engineering, full-stack web development, and AI agent architectures.
+        I enjoy building intelligent systems, working with modern databases, and exploring 3D procedural modeling.
+      </p>
+
+      <a href="/resume" class="btn">View My Resume →</a>
+
+    </div>
+  </div>
+
+  <!-- Course info section -->
+  <div class="info-cards">
+
+    <div class="card">
+      <h3>About Me</h3>
+      <p>
+        Information Technology student focused on full-stack software development, object-oriented design, and intelligent AI agent workflows.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>Key Projects</h3>
+      <p>
+        Built Orbit X for the NASA Hackathon, modeled comprehensive database ERDs, and developed 3D procedural generation scripts with Python.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>AI Resume Assistant</h3>
+      <p>
+        Head over to the <a href="/resume">Resume page</a> to interact with the AI assistant. It queries real-time database records to answer questions about my background.
+      </p>
+    </div>
+
+  </div>
+
+</div>
+
+{% endblock %}
