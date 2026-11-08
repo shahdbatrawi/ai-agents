@@ -66,7 +66,7 @@ class database:
 
     def __init__(self):
         # DB path can be overridden (e.g. a separate test database)
-        self.db_path = os.getenv('RESUME_DB_PATH', DB_PATH)
+        self.db_path = os.getenv('RESUME_DB_PATH') or DB_PATH
         folder = os.path.dirname(self.db_path)
         if folder:
             os.makedirs(folder, exist_ok=True)

@@ -23,7 +23,7 @@ def search_by_meaning(db, query, tables=None, top_k=DEFAULT_TOP_K, min_score=Non
     Raises EmbeddingError if the query itself cannot be embedded (never invents matches).
     """
     if min_score is None:
-        min_score = float(os.getenv("SEARCH_MIN_SCORE", "0.0"))
+        min_score = float(os.getenv("SEARCH_MIN_SCORE") or "0.0")
     query = (query or "").strip()
     if not query:
         return []

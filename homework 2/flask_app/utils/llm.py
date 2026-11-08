@@ -210,7 +210,7 @@ def run_semantic_search(db, query, tables=None):
     starts with "NO MATCH" or "SEARCH FAILED" when there is nothing usable, so
     later code (and the final reply) can say so honestly instead of guessing.
     """
-    cutoff = os.getenv("SEARCH_MIN_SCORE", "0.0")
+    cutoff = os.getenv("SEARCH_MIN_SCORE") or "0.0"
     scope = ", ".join(tables) if tables else "all tables"
     try:
         results = search_by_meaning(db, query, tables=tables)
