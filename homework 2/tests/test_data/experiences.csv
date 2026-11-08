@@ -1,0 +1,3 @@
+experience_id,position_id,name,description,hyperlink,start_date,end_date
+1,1,CSE 847,Machine learning course,NULL,2020-01-01,NULL
+2,2,BRAINWORKS,Brain research,NULL,2018-01-01,2019-01-01

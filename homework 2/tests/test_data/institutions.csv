@@ -1,0 +1,3 @@
+inst_id,type,name,department,address,city,state,zip
+1,Academia,Michigan State University,Computer Science,1 Main,East Lansing,MI,48824
+2,Industry,BRAINWORKS,NULL,2 Side,Detroit,MI,48201

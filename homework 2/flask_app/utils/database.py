@@ -201,7 +201,9 @@ class database:
         # NOTE: Edit these CSV files to add your own resume data!
         #       Restart the app after editing to reload the database.
         """
-        csv_file = os.path.join(data_folder, 'initial_data', f'{table}.csv')
+        # RESUME_SEED_DIR lets the tests load the course test data instead of your resume
+        seed_dir = os.getenv('RESUME_SEED_DIR') or os.path.join(data_folder, 'initial_data')
+        csv_file = os.path.join(seed_dir, f'{table}.csv')
 
         if not os.path.exists(csv_file):
             return

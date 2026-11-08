@@ -18,6 +18,7 @@ import time
 
 from flask_app.utils.database import ApprovalRequired
 from flask_app.utils.llm import handle_ai_chat_request
+from flask_app.utils.trace import new_request, log, one_line
 
 YES = {"yes", "y", "confirm"}
 NO = {"no", "n", "cancel"}
@@ -37,34 +38,40 @@ class ChatSession:
 
     def handle(self, text):
         text = text.strip()
+        new_request(text)
+        reply = self._reply(text)
+        log(f"outcome: {one_line(reply, 200)}")
+        return reply
+
+    def _reply(self, text):
         if self.pending:
             return self._handle_answer(text)
         try:
             reply = handle_ai_chat_request(self.db, role="Orchestrator", message=text)
-            print("[trace] approval: none")
+            log("approval: none")
             return reply
         except ApprovalRequired as needed:
             self.pending = {"operation": needed.operation, "preview": needed.preview,
                             "asked_at": self.clock()}
-            print(f"[trace] approval: waiting | {needed.operation}")
+            log(f"approval: waiting | {needed.operation}")
             return f"{needed.preview} Nothing has been changed yet. Reply yes to confirm or no to cancel."
         except Exception as error:
-            print(f"LLM error: {error}")
+            log(f"error: {type(error).__name__}: {error}")
             return "Sorry, something went wrong answering that."
 
     def _handle_answer(self, text):
         pending, self.pending = self.pending, None      # always cleared after one answer
         if self.clock() - pending["asked_at"] > self.ttl:
-            print("[trace] approval: cancelled (expired)")
+            log("approval: cancelled (expired)")
             return "That confirmation expired, so nothing was changed. Please ask again."
         answer = _answer(text)
         if answer == "yes":
-            print(f"[trace] approval: approved | {pending['operation']}")
+            log(f"approval: approved | {pending['operation']}")
             try:
                 return self.db.apply_operation(pending["operation"],
                                                approved_operation=pending["operation"])
             except Exception as error:
-                print(f"Approved change failed: {error}")
+                log(f"approved change failed: {error}")
                 return "Sorry, that change failed and nothing was modified."
-        print(f"[trace] approval: cancelled ({answer})")
+        log(f"approval: cancelled ({answer})")
         return "Cancelled. Nothing was changed. Send your request again if you still want it."

@@ -23,6 +23,7 @@ from flask_app.utils.embeddings import EmbeddingError
 from flask_app.utils.database import EMBED_SOURCES
 from flask_app.utils.semantic_search import search_by_meaning
 from flask_app.utils.write_ops import parse_operation
+from flask_app.utils.trace import log, one_line
 
 
 
@@ -192,7 +193,7 @@ def handle_ai_chat_request(db, role, message, context="", tables=None):
         request=message,
     )
     output = send_message(message, system_prompt).strip()
-    print(f"[{role}] generated:\n{output}\n")   # the rubric checks this output
+    log(f"{role} generated: {one_line(output)}")
 
     if role == "Database Read Expert":
         return execute_read_query(db, output)
@@ -214,18 +215,18 @@ def run_semantic_search(db, query, tables=None):
     try:
         results = search_by_meaning(db, query, tables=tables)
     except EmbeddingError as error:
-        print(f"[Semantic Search Expert] embedding failed: {error}")
+        log(f"Semantic Search Expert: embedding failed: {error}")
         return f"SEARCH FAILED: the search is unavailable right now ({error})."
     except ValueError as error:
-        print(f"[Semantic Search Expert] bad request: {error}")
+        log(f"Semantic Search Expert: bad request: {error}")
         return f"SEARCH FAILED: {error}"
 
-    print(f"[Semantic Search Expert] query={query!r} tables={scope} cutoff={cutoff}")
+    log(f"Semantic Search Expert: query={query!r} tables={scope} cutoff={cutoff}")
     for r in results:
-        print(f"    {r['score']:.3f}  {r['table']}#{r['id']}  {r['text'][:70]}")
+        log(f"    score {r['score']:.3f}  {r['table']}#{r['id']}  {r['text'][:70]}")
 
     if not results:
-        print("    (nothing above the relevance cutoff)")
+        log("    NO MATCH: nothing above the relevance cutoff")
         return (f"NO MATCH: nothing relevant to '{query}' was found in {scope} "
                 f"(relevance cutoff {cutoff}).")
     return "\n".join(
@@ -246,7 +247,7 @@ def execute_read_query(db, sql):
     try:
         return str(db.query(sql))
     except Exception as error:
-        print(f"Read Expert query failed: {error}")
+        log(f"Read Expert query failed: {error}")
         return "Sorry, that question couldn't be answered."
 
 
@@ -262,9 +263,9 @@ def execute_write_action(db, output):
     try:
         operation = parse_operation(output)
     except ValueError as error:
-        print(f"[trace] write request refused: {error}")
+        log(f"write request refused: {error}")
         return "I couldn't turn that into an allowed change, so nothing was modified."
-    print(f"[trace] write operation: {operation}")
+    log(f"write operation: {operation}")
     return db.apply_operation(operation)
 
 
@@ -326,14 +327,13 @@ def run_orchestrator_plan(db, original_request, plan_text):
     try:
         steps = parse_plan(plan_text)
     except ValueError as error:
-        print(f"Orchestrator returned an invalid plan: {error}")
-        print(f"Plan received: {plan_text!r}")
+        log(f"invalid plan: {error} | received: {one_line(plan_text, 150)}")
         return "Sorry, I couldn't plan a response to that."
 
+    log("route: " + " -> ".join(step["expert"] for step in steps))
     results = []
     for number, step in enumerate(steps, 1):
-        print(f"[trace] step {number}/{len(steps)}: {step['expert']} | "
-              f"reason: {step['reason'] or '-'}")
+        log(f"step {number}/{len(steps)}: {step['expert']} | reason: {step['reason'] or '-'}")
         response = handle_ai_chat_request(
             db, step["expert"], step["message"],
             context=_earlier_results_context(results),
@@ -345,7 +345,7 @@ def run_orchestrator_plan(db, original_request, plan_text):
         if (step["expert"] == "Semantic Search Expert"
                 and str(response).startswith(("NO MATCH", "SEARCH FAILED"))
                 and number < len(steps)):
-            print("[trace] the search found nothing usable: skipping the remaining steps")
+            log("the search found nothing usable: skipping the remaining steps")
             break
 
     steps_summary = "\n".join(

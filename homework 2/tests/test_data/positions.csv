@@ -1,0 +1,3 @@
+position_id,inst_id,title,responsibilities,start_date,end_date
+1,1,Instructor,Teach CSE courses,2019-01-01,NULL
+2,2,Researcher,Research ML,2018-01-01,2019-01-01
