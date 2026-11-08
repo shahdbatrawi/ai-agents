@@ -22,6 +22,7 @@ import os
 from io import StringIO
 import json
 from flask_app.utils.embeddings import embed_texts, EmbeddingError
+from flask_app.utils.write_ops import ALLOWED_OPERATIONS, needs_approval
 
 # Path to the SQLite database file — created automatically on first run
 DB_PATH = 'flask_app/database/resume.db'
@@ -41,7 +42,16 @@ EMBED_SOURCES = {
     'experiences': ('experience_id',
         "name || COALESCE(': ' || NULLIF(description,''), '')"),
     'skills': ('skill_id', "name"),
-} 
+}
+
+
+class ApprovalRequired(Exception):
+    """Raised by apply_operation when a destructive change has not been approved."""
+
+    def __init__(self, operation, preview):
+        super().__init__(preview)
+        self.operation = operation
+        self.preview = preview
 
 
 class database:
@@ -138,7 +148,7 @@ class database:
             print("  Existing database found: keeping your data.")
 
         self._sync_llm_roles(data_folder)
-        
+
         self.remove_orphan_embeddings()
         try:
             count = self.backfill_embeddings()
@@ -221,6 +231,40 @@ class database:
         connection.commit()
         connection.close()
         print(f"  Loaded data for table: {table}")
+
+    def backfill_embeddings(self):
+        """Embed every record that has no embedding yet (or whose text changed)."""
+        model = os.getenv('EMBEDDING_MODEL')
+        total = 0
+        for table, (id_col, text_sql) in EMBED_SOURCES.items():
+            missing = self.query(
+                f"""SELECT t.id AS id, t.text AS text
+                    FROM (SELECT {id_col} AS id, {text_sql} AS text FROM {table}) t
+                    LEFT JOIN embeddings e
+                           ON e.source_table = ? AND e.source_id = t.id AND e.model = ?
+                    WHERE e.embed_id IS NULL OR e.text != t.text""",
+                (table, model),
+            )
+            for start in range(0, len(missing), 50):
+                batch = missing[start:start + 50]
+                vectors = embed_texts([row['text'] for row in batch])  # may raise
+                for row, vec in zip(batch, vectors):
+                    self.query(
+                        "INSERT OR REPLACE INTO embeddings "
+                        "(source_table, source_id, text, vector, model) VALUES (?, ?, ?, ?, ?)",
+                        (table, row['id'], row['text'], json.dumps(vec), model),
+                    )
+                total += len(batch)
+        return total
+
+    def remove_orphan_embeddings(self):
+        """Delete embeddings whose record no longer exists."""
+        for table, (id_col, _) in EMBED_SOURCES.items():
+            self.query(
+                f"DELETE FROM embeddings WHERE source_table = ? "
+                f"AND source_id NOT IN (SELECT {id_col} FROM {table})",
+                (table,),
+            )
 
     # ------------------------------------------------------------------
     # RESUME DATA
@@ -339,14 +383,85 @@ class database:
                 bound_params.append(value)
         sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(value_sql)})"
         self.query(sql, tuple(bound_params))
-
-        # New rows added through the chat get an embedding too.
         if table in EMBED_SOURCES:
             try:
                 self.backfill_embeddings()
             except EmbeddingError as error:
                 print(f"  WARNING: row saved but not embedded yet ({error}). It will be embedded on the next start.")
+
     
+
+    # ------------------------------------------------------------------
+    # CHANGES TO THE DATA (the only place the app writes on the AI's behalf)
+    # ------------------------------------------------------------------
+
+    def apply_operation(self, operation, approved_operation=None):
+        """
+        Run one validated operation from write_ops.py.
+
+        The approval check lives HERE, in the code that writes, so no caller can
+        skip it. A destructive operation (delete / overwrite) only runs when
+        `approved_operation` is exactly the same operation. That value is passed
+        only by chat_flow.py after the user typed "yes"; the model cannot supply it.
+        Otherwise ApprovalRequired is raised and NOTHING is changed.
+        """
+        kind = operation["operation"]
+        if kind not in ALLOWED_OPERATIONS:
+            raise ValueError(f"operation not allowed: {kind!r}")
+
+        if kind == "add_skill":
+            return self._add_skill(operation)
+
+        targets = self._skill_targets(operation)
+        if not targets:
+            return "No matching skill was found, so nothing was changed."
+
+        if needs_approval(kind) and approved_operation != operation:
+            names = ", ".join(sorted({t['name'] for t in targets})[:10])
+            if kind == "delete_all_skills":
+                preview = f"This will delete ALL {len(targets)} skills ({names})."
+            elif kind == "delete_skill":
+                preview = f"This will delete {len(targets)} skill row(s) named '{operation['skill']}'."
+            else:
+                preview = (f"This will change the level of {len(targets)} skill row(s) named "
+                           f"'{operation['skill']}' to {operation['skill_level']}.")
+            raise ApprovalRequired(operation, preview)
+
+        ids = [t['skill_id'] for t in targets]
+        marks = ", ".join("?" for _ in ids)
+        if kind == "update_skill_level":
+            self.query(f"UPDATE skills SET skill_level = ? WHERE skill_id IN ({marks})",
+                       (operation['skill_level'], *ids))
+            return f"Updated the level of {len(ids)} skill row(s) named '{operation['skill']}'."
+        self.query(f"DELETE FROM skills WHERE skill_id IN ({marks})", tuple(ids))
+        self.remove_orphan_embeddings()
+        if kind == "delete_all_skills":
+            return f"Deleted all {len(ids)} skills."
+        return f"Deleted {len(ids)} skill row(s) named '{operation['skill']}'."
+
+    def _skill_targets(self, operation):
+        if operation["operation"] == "delete_all_skills":
+            return self.query("SELECT skill_id, name FROM skills")
+        return self.query("SELECT skill_id, name FROM skills WHERE LOWER(name) = LOWER(?)",
+                          (operation["skill"],))
+
+    def _add_skill(self, operation):
+        exp = self.query("SELECT experience_id, name FROM experiences WHERE LOWER(name) = LOWER(?)",
+                         (operation["experience"],))
+        if not exp and operation["experience"].upper() == "LATEST":
+            exp = self.query("SELECT experience_id, name FROM experiences "
+                             "ORDER BY start_date DESC LIMIT 1")
+        if not exp:
+            return f"I couldn't find an experience named '{operation['experience']}', so nothing was added."
+        exp = exp[0]
+        existing = self.query("SELECT skill_id FROM skills WHERE LOWER(name) = LOWER(?) AND experience_id = ?",
+                              (operation["skill"], exp['experience_id']))
+        if existing:
+            return f"Element already exists in the skills table: {operation['skill']} on {exp['name']}."
+        self.insertRows("skills", ["experience_id", "name", "skill_level"],
+                        [exp['experience_id'], operation["skill"], operation["skill_level"]])
+        return f"New {operation['skill']} added to the skills table (experience: {exp['name']})."
+
 
     def getResumeText(self):
         """Return the resume as a plain-text string, used as context for the AI."""
@@ -367,37 +482,3 @@ class database:
                         lines.append(f"      Skill: {skill['name']} (level {skill['skill_level']}/10)")
 
         return '\n'.join(lines)
-
-    def backfill_embeddings(self):
-        """Embed every record that has no embedding yet (or whose text changed)."""
-        model = os.getenv('EMBEDDING_MODEL')
-        total = 0
-        for table, (id_col, text_sql) in EMBED_SOURCES.items():
-            missing = self.query(
-                f"""SELECT t.id AS id, t.text AS text
-                    FROM (SELECT {id_col} AS id, {text_sql} AS text FROM {table}) t
-                    LEFT JOIN embeddings e
-                           ON e.source_table = ? AND e.source_id = t.id AND e.model = ?
-                    WHERE e.embed_id IS NULL OR e.text != t.text""",
-                (table, model),
-            )
-            for start in range(0, len(missing), 50):
-                batch = missing[start:start + 50]
-                vectors = embed_texts([row['text'] for row in batch])  # may raise
-                for row, vec in zip(batch, vectors):
-                    self.query(
-                        "INSERT OR REPLACE INTO embeddings "
-                        "(source_table, source_id, text, vector, model) VALUES (?, ?, ?, ?, ?)",
-                        (table, row['id'], row['text'], json.dumps(vec), model),
-                    )
-                total += len(batch)
-        return total
-
-    def remove_orphan_embeddings(self):
-        """Delete embeddings whose record no longer exists."""
-        for table, (id_col, _) in EMBED_SOURCES.items():
-            self.query(
-                f"DELETE FROM embeddings WHERE source_table = ? "
-                f"AND source_id NOT IN (SELECT {id_col} FROM {table})",
-                (table,),
-            )

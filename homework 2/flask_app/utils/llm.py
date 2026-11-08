@@ -22,6 +22,7 @@ import re
 from flask_app.utils.embeddings import EmbeddingError
 from flask_app.utils.database import EMBED_SOURCES
 from flask_app.utils.semantic_search import search_by_meaning
+from flask_app.utils.write_ops import parse_operation
 
 
 
@@ -249,30 +250,22 @@ def execute_read_query(db, sql):
         return "Sorry, that question couldn't be answered."
 
 
-def execute_write_action(db, generated_code):
+def execute_write_action(db, output):
     """
-    Run the Database Write Expert's generated Python. This genuinely
-    executes model-generated code with exec() -- see "Questions to Think
-    About" below for why that's worth pausing on. `db` is the only thing
-    exposed to it.
+    Turn the Database Write Expert's output into ONE allowed operation (JSON, see
+    write_ops.py) and apply it. Nothing the model wrote is executed.
 
-    `outcome` is how the generated code reports back what happened -- it's
-    already the full, exact message to show the user (see Step 2), not a
-    bare status, because only the generated code knows which table/element
-    it actually touched.
-
-    NULL=None is a compatibility shim: the model sometimes writes SQL's
-    NULL instead of Python's None for a missing value. Python has no NULL,
-    so without this, that one habit would crash otherwise-correct code
-    with a NameError.
+    A destructive operation raises ApprovalRequired from db.apply_operation. We let
+    it travel up to chat_flow.py, which asks the user yes/no. Nothing has been
+    changed at that point.
     """
-    local_vars = {}
     try:
-        exec(generated_code, {"db": db, "NULL": None}, local_vars)
-    except Exception as error:
-        print(f"Write Expert code failed: {error}")
-        return "Operation was unsuccessful."
-    return local_vars.get("outcome", "Operation was unsuccessful.")
+        operation = parse_operation(output)
+    except ValueError as error:
+        print(f"[trace] write request refused: {error}")
+        return "I couldn't turn that into an allowed change, so nothing was modified."
+    print(f"[trace] write operation: {operation}")
+    return db.apply_operation(operation)
 
 
 def parse_plan(plan_text):
