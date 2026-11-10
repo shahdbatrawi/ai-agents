@@ -1,0 +1,12 @@
+---- S11  [API] Harvard (not in the data): not found, nothing invented
+[req 19] request: 'Find my Harvard experience'
+[req 19] Orchestrator generated: [{"expert":"Semantic Search Expert","message":"Harvard experience","reason":"fuzzy wording may not match the stored names"},{"expert":"Database Read Expert","message":"List the positions and experiences at the institution found in the previous step, using its exact name","reason":"second step looks ...
+[req 19] route: Semantic Search Expert -> Database Read Expert
+[req 19] step 1/2: Semantic Search Expert | reason: fuzzy wording may not match the stored names
+[req 19] Semantic Search Expert: query='Harvard experience' tables=all tables cutoff=0.20
+[req 19]     NO MATCH: nothing above the relevance cutoff
+[req 19] the search found nothing usable: skipping the remaining steps
+[req 19] approval: none
+[req 19] outcome: I could not find anything matching your request.
+      reply: I could not find anything matching your request.
+PASS S11

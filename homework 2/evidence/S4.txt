@@ -1,0 +1,12 @@
+---- S4   [API] two dependent steps (resolve name, then look up)
+[req 4] request: 'What did I do at MSU?'
+[req 4] Orchestrator generated: [{"expert":"Semantic Search Expert","message":"MSU","tables":["institutions"],"reason":"first resolve the abbreviation to the stored institution name"},{"expert":"Database Read Expert","message":"List the positions and experiences at the institution found in the previous step, using its exact name",...
+[req 4] route: Semantic Search Expert -> Database Read Expert
+[req 4] step 1/2: Semantic Search Expert | reason: first resolve the abbreviation to the stored institution name
+[req 4] Semantic Search Expert: query='MSU' tables=institutions cutoff=0.20
+[req 4]     score 0.310  institutions#1  Michigan State University - Computer Science, East Lansing, Michigan
+[req 4] step 2/2: Database Read Expert | reason: second step looks up details with the exact name found
+[req 4] Database Read Expert generated: SELECT p.title, p.start_date, p.end_date, e.name, e.start_date, e.end_date FROM positions p JOIN institutions i ON p.inst_id = i.inst_id JOIN experiences e ON p.position_id = e.position_id WHERE i.name = 'Michigan State University'
+[req 4] approval: none
+[req 4] outcome: At MSU, you served as an Instructor for CSE 477, CSE 847, and CSE 491, and you worked as a Researcher on Feature Imitating Networks starting from January 1, 2019.
+PASS S4

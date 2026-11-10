@@ -1,0 +1,13 @@
+---- S1   [API] abbreviation found by meaning
+[req 1] request: 'Find my MSU experience'
+[req 1] Orchestrator generated: [{"expert":"Semantic Search Expert","message":"MSU experience","reason":"abbreviation, the wording may not match the stored names"},{"expert":"Database Read Expert","message":"List the positions and experiences at the institution found in the previous step, using its exact name","reason":"second ste...
+[req 1] route: Semantic Search Expert -> Database Read Expert
+[req 1] step 1/2: Semantic Search Expert | reason: abbreviation, the wording may not match the stored names
+[req 1] Semantic Search Expert: query='MSU experience' tables=all tables cutoff=0.20
+[req 1]     score 0.312  institutions#1  Michigan State University - Computer Science, East Lansing, Michigan
+[req 1] step 2/2: Database Read Expert | reason: second step looks up details with the exact name found
+[req 1] Database Read Expert generated: SELECT p.title, p.start_date, p.end_date, e.name, e.description, e.hyperlink, e.start_date, e.end_date FROM positions p JOIN institutions i ON p.inst_id = i.inst_id JOIN experiences e ON p.position_id = e.position_id WHERE i.name = 'Michigan State University'
+[req 1] approval: none
+[req 1] outcome: I found the following experiences related to Michigan State University: 1. **CSE 477** - Instructor: Taught an introductory course on web application design. [Link](https://www.youtube.com/@ghassemi) ...
+      top results: ['0.312  institutions#1  Michigan State University - Computer ']
+PASS S1

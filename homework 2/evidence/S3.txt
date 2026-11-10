@@ -1,0 +1,10 @@
+---- S3   [API] exact question goes to the Read Expert
+[req 3] request: 'How many positions do I have?'
+[req 3] Orchestrator generated: [{"expert":"Database Read Expert","message":"How many positions are in the positions table?","reason":"exact count, plain SQL is enough"}]
+[req 3] route: Database Read Expert
+[req 3] step 1/1: Database Read Expert | reason: exact count, plain SQL is enough
+[req 3] Database Read Expert generated: SELECT COUNT(*) FROM positions;
+[req 3] approval: none
+[req 3] outcome: You have 4 positions.
+      [req 3] step 1/1: Database Read Expert | reason: exact count, plain SQL is enough
+PASS S3

@@ -1,0 +1,11 @@
+---- S2   [API] AI skills found, unrelated skill not
+[req 2] request: 'What AI skills do I have?'
+[req 2] Orchestrator generated: [{"expert":"Semantic Search Expert","message":"AI skills","tables":["skills"],"reason":"category question about skills, no skill is literally named AI"}]
+[req 2] route: Semantic Search Expert
+[req 2] step 1/1: Semantic Search Expert | reason: category question about skills, no skill is literally named AI
+[req 2] Semantic Search Expert: query='AI skills' tables=skills cutoff=0.20
+[req 2]     score 0.228  skills#5  Machine Learning
+[req 2] approval: none
+[req 2] outcome: You have the skill in 'Machine Learning'.
+      Machine Learning rank 1; Public Speaking not returned
+PASS S2

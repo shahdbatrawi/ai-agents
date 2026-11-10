@@ -1,0 +1,179 @@
+Test data: C:\Users\khatib\Documents\ai-agents\homework 2\fixtures
+Test database: tests\.test_resume.db (your own resume.db is not touched)
+
+  Loaded data for table: institutions
+  Loaded data for table: positions
+  Loaded data for table: experiences
+  Loaded data for table: skills
+  Synced prompts for table: llm_roles
+  Embeddings up to date (19 new).
+---- U1   [offline] forbidden operations / plans are refused
+PASS U1
+---- U2   [offline] the write code itself refuses an unapproved delete
+PASS U2
+---- S1   [API] abbreviation found by meaning
+[req 1] request: 'Find my MSU experience'
+[req 1] Orchestrator generated: [{"expert":"Semantic Search Expert","message":"MSU experience","reason":"abbreviation, the wording may not match the stored names"},{"expert":"Database Read Expert","message":"List the positions and experiences at the institution found in the previous step, using its exact name","reason":"second ste...
+[req 1] route: Semantic Search Expert -> Database Read Expert
+[req 1] step 1/2: Semantic Search Expert | reason: abbreviation, the wording may not match the stored names
+[req 1] Semantic Search Expert: query='MSU experience' tables=all tables cutoff=0.20
+[req 1]     score 0.312  institutions#1  Michigan State University - Computer Science, East Lansing, Michigan
+[req 1] step 2/2: Database Read Expert | reason: second step looks up details with the exact name found
+[req 1] Database Read Expert generated: SELECT p.title, p.start_date, p.end_date, e.name, e.description, e.hyperlink, e.start_date, e.end_date FROM positions p JOIN institutions i ON p.inst_id = i.inst_id JOIN experiences e ON p.position_id = e.position_id WHERE i.name = 'Michigan State University'
+[req 1] approval: none
+[req 1] outcome: I found the following experiences related to Michigan State University: 1. **CSE 477** - Instructor: Taught an introductory course on web application design. [Link](https://www.youtube.com/@ghassemi) ...
+      top results: ['0.312  institutions#1  Michigan State University - Computer ']
+PASS S1
+---- S2   [API] AI skills found, unrelated skill not
+[req 2] request: 'What AI skills do I have?'
+[req 2] Orchestrator generated: [{"expert":"Semantic Search Expert","message":"AI skills","tables":["skills"],"reason":"category question about skills, no skill is literally named AI"}]
+[req 2] route: Semantic Search Expert
+[req 2] step 1/1: Semantic Search Expert | reason: category question about skills, no skill is literally named AI
+[req 2] Semantic Search Expert: query='AI skills' tables=skills cutoff=0.20
+[req 2]     score 0.228  skills#5  Machine Learning
+[req 2] approval: none
+[req 2] outcome: You have the skill in 'Machine Learning'.
+      Machine Learning rank 1; Public Speaking not returned
+PASS S2
+---- S3   [API] exact question goes to the Read Expert
+[req 3] request: 'How many positions do I have?'
+[req 3] Orchestrator generated: [{"expert":"Database Read Expert","message":"How many positions are in the positions table?","reason":"exact count, plain SQL is enough"}]
+[req 3] route: Database Read Expert
+[req 3] step 1/1: Database Read Expert | reason: exact count, plain SQL is enough
+[req 3] Database Read Expert generated: SELECT COUNT(*) FROM positions;
+[req 3] approval: none
+[req 3] outcome: You have 4 positions.
+      [req 3] step 1/1: Database Read Expert | reason: exact count, plain SQL is enough
+PASS S3
+---- S4   [API] two dependent steps (resolve name, then look up)
+[req 4] request: 'What did I do at MSU?'
+[req 4] Orchestrator generated: [{"expert":"Semantic Search Expert","message":"MSU","tables":["institutions"],"reason":"first resolve the abbreviation to the stored institution name"},{"expert":"Database Read Expert","message":"List the positions and experiences at the institution found in the previous step, using its exact name",...
+[req 4] route: Semantic Search Expert -> Database Read Expert
+[req 4] step 1/2: Semantic Search Expert | reason: first resolve the abbreviation to the stored institution name
+[req 4] Semantic Search Expert: query='MSU' tables=institutions cutoff=0.20
+[req 4]     score 0.310  institutions#1  Michigan State University - Computer Science, East Lansing, Michigan
+[req 4] step 2/2: Database Read Expert | reason: second step looks up details with the exact name found
+[req 4] Database Read Expert generated: SELECT p.title, p.start_date, p.end_date, e.name, e.start_date, e.end_date FROM positions p JOIN institutions i ON p.inst_id = i.inst_id JOIN experiences e ON p.position_id = e.position_id WHERE i.name = 'Michigan State University'
+[req 4] approval: none
+[req 4] outcome: At MSU, you served as an Instructor for CSE 477, CSE 847, and CSE 491, and you worked as a Researcher on Feature Imitating Networks starting from January 1, 2019.
+PASS S4
+---- S5   [API] added skill survives a restart and is searchable
+[req 5] request: 'Add the skill Kubernetes at level 6 to my CSE 477 experience'
+[req 5] Orchestrator generated: [{"expert":"Database Write Expert","message":"Add the skill Kubernetes at level 6 to the CSE 477 experience","reason":"modification of existing experience to include a new skill"}]
+[req 5] route: Database Write Expert
+[req 5] step 1/1: Database Write Expert | reason: modification of existing experience to include a new skill
+[req 5] Database Write Expert generated: {"operation":"add_skill","skill":"Kubernetes","experience":"CSE 477","skill_level":6}
+[req 5] write operation: {'operation': 'add_skill', 'skill': 'Kubernetes', 'experience': 'CSE 477', 'skill_level': 6}
+[req 5] approval: none
+[req 5] outcome: New Kubernetes added to the skills table (experience: CSE 477).
+      ... restarting the app (new database object + createTables) ...
+  Existing database found: keeping your data.
+  Synced prompts for table: llm_roles
+  Embeddings up to date (0 new).
+PASS S5
+---- S6   [API] deletion then 'no' leaves the database unchanged
+[req 6] request: 'Remove the Public Speaking skill'
+[req 6] Orchestrator generated: [{"expert":"Database Write Expert","message":"Remove the Public Speaking skill from the skills table","reason":"modifying existing data, need to delete a specific skill"}]
+[req 6] route: Database Write Expert
+[req 6] step 1/1: Database Write Expert | reason: modifying existing data, need to delete a specific skill
+[req 6] Database Write Expert generated: {"operation":"delete_skill","skill":"Public Speaking"}
+[req 6] write operation: {'operation': 'delete_skill', 'skill': 'Public Speaking'}
+[req 6] approval: waiting | {'operation': 'delete_skill', 'skill': 'Public Speaking'}
+[req 6] outcome: This will delete 1 skill row(s) named 'Public Speaking'. Nothing has been changed yet. Reply yes to confirm or no to cancel.
+      before: skills = ['CSS', 'HTML', 'Javascript', 'Machine Learning', 'Public Speaking', 'Python']
+[req 7] request: 'no'
+[req 7] approval: cancelled (no)
+[req 7] outcome: Cancelled. Nothing was changed. Send your request again if you still want it.
+      after no: skills = ['CSS', 'HTML', 'Javascript', 'Machine Learning', 'Public Speaking', 'Python']
+PASS S6
+---- S7   [API] deletion then 'yes' runs only the shown action
+[req 8] request: 'Remove the Public Speaking skill'
+[req 8] Orchestrator generated: [{"expert":"Database Write Expert","message":"Remove Public Speaking from the skills list","reason":"modification needed in the database to remove a skill"}]
+[req 8] route: Database Write Expert
+[req 8] step 1/1: Database Write Expert | reason: modification needed in the database to remove a skill
+[req 8] Database Write Expert generated: {"operation":"delete_skill","skill":"Public Speaking"}
+[req 8] write operation: {'operation': 'delete_skill', 'skill': 'Public Speaking'}
+[req 8] approval: waiting | {'operation': 'delete_skill', 'skill': 'Public Speaking'}
+[req 8] outcome: This will delete 1 skill row(s) named 'Public Speaking'. Nothing has been changed yet. Reply yes to confirm or no to cancel.
+      before: skills = ['CSS', 'HTML', 'Javascript', 'Machine Learning', 'Public Speaking', 'Python']
+[req 9] request: 'yes'
+[req 9] approval: approved | {'operation': 'delete_skill', 'skill': 'Public Speaking'}
+[req 9] outcome: Deleted 1 skill row(s) named 'Public Speaking'.
+      after yes: skills = ['CSS', 'HTML', 'Javascript', 'Machine Learning', 'Python']
+PASS S7
+---- S8   [API] 'maybe' / change of subject approve nothing
+[req 10] request: 'Remove the Public Speaking skill'
+[req 10] Orchestrator generated: [{"expert":"Database Write Expert","message":"Remove Public Speaking from the skills list","reason":"modifying existing data in the database"}]
+[req 10] route: Database Write Expert
+[req 10] step 1/1: Database Write Expert | reason: modifying existing data in the database
+[req 10] Database Write Expert generated: {"operation":"delete_skill","skill":"Public Speaking"}
+[req 10] write operation: {'operation': 'delete_skill', 'skill': 'Public Speaking'}
+[req 10] approval: waiting | {'operation': 'delete_skill', 'skill': 'Public Speaking'}
+[req 10] outcome: This will delete 1 skill row(s) named 'Public Speaking'. Nothing has been changed yet. Reply yes to confirm or no to cancel.
+[req 11] request: 'maybe'
+[req 11] approval: cancelled (unclear)
+[req 11] outcome: Cancelled. Nothing was changed. Send your request again if you still want it.
+[req 12] request: 'Remove the Public Speaking skill'
+[req 12] Orchestrator generated: [{"expert":"Database Write Expert","message":"Remove Public Speaking from skills","reason":"modifying the database to remove a skill"}]
+[req 12] route: Database Write Expert
+[req 12] step 1/1: Database Write Expert | reason: modifying the database to remove a skill
+[req 12] Database Write Expert generated: {"operation":"delete_skill","skill":"Public Speaking"}
+[req 12] write operation: {'operation': 'delete_skill', 'skill': 'Public Speaking'}
+[req 12] approval: waiting | {'operation': 'delete_skill', 'skill': 'Public Speaking'}
+[req 12] outcome: This will delete 1 skill row(s) named 'Public Speaking'. Nothing has been changed yet. Reply yes to confirm or no to cancel.
+[req 13] request: 'What is this page about?'
+[req 13] approval: cancelled (unclear)
+[req 13] outcome: Cancelled. Nothing was changed. Send your request again if you still want it.
+[req 14] request: 'yes'
+[req 14] Orchestrator generated: []
+[req 14] invalid plan: the plan must be a non-empty list of steps | received: []
+[req 14] approval: none
+[req 14] outcome: Sorry, I couldn't plan a response to that.
+PASS S8
+---- S9   [API] 'clean up my skills' is paused (no danger word)
+[req 15] request: 'Clean up my skills so the list is empty'
+[req 15] Orchestrator generated: [{"expert":"Database Write Expert","message":"Remove all skills from the skills table.","reason":"modifying the database to empty the skills list."}]
+[req 15] route: Database Write Expert
+[req 15] step 1/1: Database Write Expert | reason: modifying the database to empty the skills list.
+[req 15] Database Write Expert generated: {"operation":"delete_all_skills"}
+[req 15] write operation: {'operation': 'delete_all_skills'}
+[req 15] approval: waiting | {'operation': 'delete_all_skills'}
+[req 15] outcome: This will delete ALL 6 skills (CSS, HTML, Javascript, Machine Learning, Public Speaking, Python). Nothing has been changed yet. Reply yes to confirm or no to cancel.
+      before: skills = ['CSS', 'HTML', 'Javascript', 'Machine Learning', 'Public Speaking', 'Python']
+[req 16] request: 'no'
+[req 16] approval: cancelled (no)
+[req 16] outcome: Cancelled. Nothing was changed. Send your request again if you still want it.
+      after no: skills = ['CSS', 'HTML', 'Javascript', 'Machine Learning', 'Public Speaking', 'Python']
+PASS S9
+---- S10  [API] embedding failure: clear error, no fake match
+[req 17] request: 'Find my MSU experience'
+[req 17] Orchestrator generated: [{"expert":"Semantic Search Expert","message":"MSU experience","reason":"abbreviation, the wording may not match the stored names"},{"expert":"Database Read Expert","message":"List the positions and experiences at the institution found in the previous step, using its exact name","reason":"second ste...
+[req 17] route: Semantic Search Expert -> Database Read Expert
+[req 17] step 1/2: Semantic Search Expert | reason: abbreviation, the wording may not match the stored names
+[req 17] Semantic Search Expert: embedding failed: Embedding API error: Model not-a-real-model/for-testing does not exist
+[req 17] the search found nothing usable: skipping the remaining steps
+[req 17] approval: none
+[req 17] outcome: SEARCH FAILED: the search is unavailable right now (Embedding API error: Model not-a-real-model/for-testing does not exist).
+      reply while failing: SEARCH FAILED: the search is unavailable right now (Embedding API error: Model not-a-real-model/for-
+[req 18] request: 'How many skills do I have?'
+[req 18] Orchestrator generated: [{"expert":"Database Read Expert","message":"How many skills are in the skills table?","reason":"exact count, plain SQL is enough"}]
+[req 18] route: Database Read Expert
+[req 18] step 1/1: Database Read Expert | reason: exact count, plain SQL is enough
+[req 18] Database Read Expert generated: SELECT COUNT(*) FROM skills;
+[req 18] approval: none
+[req 18] outcome: You have 6 skills.
+PASS S10
+---- S11  [API] Harvard (not in the data): not found, nothing invented
+[req 19] request: 'Find my Harvard experience'
+[req 19] Orchestrator generated: [{"expert":"Semantic Search Expert","message":"Harvard experience","reason":"fuzzy wording may not match the stored names"},{"expert":"Database Read Expert","message":"List the positions and experiences at the institution found in the previous step, using its exact name","reason":"second step looks ...
+[req 19] route: Semantic Search Expert -> Database Read Expert
+[req 19] step 1/2: Semantic Search Expert | reason: fuzzy wording may not match the stored names
+[req 19] Semantic Search Expert: query='Harvard experience' tables=all tables cutoff=0.20
+[req 19]     NO MATCH: nothing above the relevance cutoff
+[req 19] the search found nothing usable: skipping the remaining steps
+[req 19] approval: none
+[req 19] outcome: I could not find anything matching your request.
+      reply: I could not find anything matching your request.
+PASS S11
+
+==== 13 passed, 0 failed, 0 skipped

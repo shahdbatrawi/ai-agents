@@ -1,0 +1,18 @@
+---- S10  [API] embedding failure: clear error, no fake match
+[req 17] request: 'Find my MSU experience'
+[req 17] Orchestrator generated: [{"expert":"Semantic Search Expert","message":"MSU experience","reason":"abbreviation, the wording may not match the stored names"},{"expert":"Database Read Expert","message":"List the positions and experiences at the institution found in the previous step, using its exact name","reason":"second ste...
+[req 17] route: Semantic Search Expert -> Database Read Expert
+[req 17] step 1/2: Semantic Search Expert | reason: abbreviation, the wording may not match the stored names
+[req 17] Semantic Search Expert: embedding failed: Embedding API error: Model not-a-real-model/for-testing does not exist
+[req 17] the search found nothing usable: skipping the remaining steps
+[req 17] approval: none
+[req 17] outcome: SEARCH FAILED: the search is unavailable right now (Embedding API error: Model not-a-real-model/for-testing does not exist).
+      reply while failing: SEARCH FAILED: the search is unavailable right now (Embedding API error: Model not-a-real-model/for-
+[req 18] request: 'How many skills do I have?'
+[req 18] Orchestrator generated: [{"expert":"Database Read Expert","message":"How many skills are in the skills table?","reason":"exact count, plain SQL is enough"}]
+[req 18] route: Database Read Expert
+[req 18] step 1/1: Database Read Expert | reason: exact count, plain SQL is enough
+[req 18] Database Read Expert generated: SELECT COUNT(*) FROM skills;
+[req 18] approval: none
+[req 18] outcome: You have 6 skills.
+PASS S10
