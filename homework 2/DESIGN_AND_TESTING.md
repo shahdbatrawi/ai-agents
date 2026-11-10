@@ -2,7 +2,7 @@
 
 **Name:** Shahd Nabil Batrawi
 **GitHub fork/branch URL:** https://github.com/shahdbatrawi/ai-agents/tree/HW2/Shahd
-**Demo video link:** ADD_VIDEO_LINK_HERE
+**Demo video link:** https://drive.google.com/file/d/1uI0xOrVjhyY0nPiiqe_94gsuoHQppiph/view?usp=sharing
 **Command that runs my tests:** `python tests/run_scenarios.py` (from the `homework 2` folder)
 
 ## 0. Starting point
