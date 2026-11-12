@@ -71,8 +71,13 @@ def create_app():
 
     # from flask_app.utils.embeddings import create_and_store_embeddings
     from flask_app.utils.embeddings import create_and_store_embeddings
-    create_and_store_embeddings(db)
-    
+
+    try:
+        if not create_and_store_embeddings(db):
+            print("Warning: some embeddings could not be created; search by meaning may be incomplete.")
+    except Exception as error:
+        print(f"Warning: embedding sync failed: {error}")
+        
     # Prevent browsers from caching old versions of pages during development
     @app.after_request
     def disable_cache(response):
